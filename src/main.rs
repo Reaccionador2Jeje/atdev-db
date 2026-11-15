@@ -382,7 +382,7 @@ fn run_server() -> Result<()> {
                 .map(|header| header.value.as_str())
                 .unwrap_or("");
             if !constant_time_equal(supplied.as_bytes(), expected.as_bytes()) {
-                let response = Response::from_string(r#"{\"ok\":false,\"error\":\"unauthorized\"}"#)
+                let response = Response::from_string(r#"{"ok":false,"error":"unauthorized"}"#)
                     .with_status_code(StatusCode(401))
                     .with_header(tiny_http::Header::from_bytes("Content-Type", "application/json").map_err(|_| anyhow!("invalid response header"))?);
                 let _ = request.respond(response);
@@ -404,7 +404,7 @@ fn run_server() -> Result<()> {
                     Err(error) => serde_json::json!({"ok": false, "error": format!("{error:#}")}).to_string(),
                 }
             }
-            Ok(_) => serde_json::json!({"ok": false, "error": "invalid database name"}).to_string(),
+            Ok(_) => serde_json::json!({"ok": false, "error": "invalid query or database name"}).to_string(),
             Err(error) => serde_json::json!({"ok": false, "error": format!("{error:#}")}).to_string(),
         };
         let response = Response::from_string(response_body)
