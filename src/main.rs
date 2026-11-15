@@ -320,7 +320,7 @@ fn run_server() -> Result<()> {
         let url = request.url().to_string();
         if request.method().as_str() == "GET" && url == "/health" {
             let response = Response::from_string(r#"{"status":"ok","service":"atdev-db"}"#)
-                .with_header("Content-Type: application/json".parse::<tiny_http::Header>()?);
+                .with_header(tiny_http::Header::from_bytes("Content-Type", "application/json").unwrap());
             let _ = request.respond(response);
             continue;
         }
