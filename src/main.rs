@@ -349,7 +349,7 @@ fn run_server() -> Result<()> {
         let url = request.url().to_string();
         if request.method().as_str() == "GET" && url == "/health" {
             let response = Response::from_string(r#"{"status":"ok","service":"atdev-db"}"#)
-                .with_header(tiny_http::Header::from_bytes("Content-Type", "application/json").unwrap());
+                .with_header(tiny_http::Header::from_bytes("Content-Type", "application/json").map_err(|_| anyhow!("invalid response header"))?);
             let _ = request.respond(response);
             continue;
         }
@@ -377,7 +377,7 @@ fn run_server() -> Result<()> {
             Err(error) => serde_json::json!({"ok": false, "error": format!("{error:#}")}).to_string(),
         };
         let response = Response::from_string(response_body)
-            .with_header("Content-Type: application/json".parse::<tiny_http::Header>()?);
+            .with_header(tiny_http::Header::from_bytes("Content-Type", "application/json").map_err(|_| anyhow!("invalid response header"))?);
         let _ = request.respond(response);
     }
     Ok(())
