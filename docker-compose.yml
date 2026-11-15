@@ -1,0 +1,16 @@
+services:
+  atdev-db:
+    build: .
+    container_name: atdev-db
+    restart: unless-stopped
+    environment:
+      ATDEV_DB_PATH: /data
+      ATDEV_DB_BIND: 0.0.0.0:8788
+      ATDEV_DB_TOKEN: ${ATDEV_DB_TOKEN:?Set ATDEV_DB_TOKEN in .env}
+    ports:
+      - "127.0.0.1:8788:8788"
+    volumes:
+      - atdev-db-data:/data
+
+volumes:
+  atdev-db-data:
