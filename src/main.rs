@@ -53,16 +53,21 @@ impl Database {
     }
 
     fn execute(&self, sql: &str) -> Result<String> {
-        let tokens = tokenize(sql)?;
-        if tokens.is_empty() { return Ok(String::new()); }
-        match tokens[0].to_ascii_uppercase().as_str() {
-            "CREATE" => self.create_table(&tokens),
-            "INSERT" => self.insert(&tokens),
-            "SELECT" => self.select(&tokens),
-            "UPDATE" => self.update(&tokens),
-            "DELETE" => self.delete(&tokens),
-            other => bail!("unsupported statement '{other}' (supported: CREATE, INSERT, SELECT, UPDATE, DELETE)"),
+        let mut output = Vec::new();
+        for statement in split_statements(sql) {
+            let tokens = tokenize(statement)?;
+            if tokens.is_empty() { continue; }
+            let result = match tokens[0].to_ascii_uppercase().as_str() {
+                "CREATE" => self.create_table(&tokens),
+                "INSERT" => self.insert(&tokens),
+                "SELECT" => self.select(&tokens),
+                "UPDATE" => self.update(&tokens),
+                "DELETE" => self.delete(&tokens),
+                other => bail!("unsupported statement '{other}' (supported: CREATE, INSERT, SELECT, UPDATE, DELETE)"),
+            }?;
+            if !result.is_empty() { output.push(result); }
         }
+        Ok(output.join("\n\n"))
     }
 
     fn create_table(&self, t: &[String]) -> Result<String> {
@@ -182,6 +187,30 @@ impl Database {
         self.save(&table)?;
         Ok(format!("DELETE: {removed} row(s) removed"))
     }
+}
+
+
+fn split_statements(sql: &str) -> Vec<&str> {
+    let mut statements = Vec::new();
+    let mut start = 0;
+    let mut quoted = false;
+    let mut chars = sql.char_indices().peekable();
+    while let Some((index, ch)) = chars.next() {
+        if ch == '\'' {
+            if quoted && chars.peek().map(|(_, next)| *next) == Some('\'') {
+                chars.next();
+            } else {
+                quoted = !quoted;
+            }
+        } else if ch == ';' && !quoted {
+            let part = sql[start..index].trim();
+            if !part.is_empty() { statements.push(part); }
+            start = index + 1;
+        }
+    }
+    let tail = sql[start..].trim();
+    if !tail.is_empty() { statements.push(tail); }
+    statements
 }
 
 fn eq(a: &str, b: &str) -> bool { a.eq_ignore_ascii_case(b) }
