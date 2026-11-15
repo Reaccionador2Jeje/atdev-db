@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::env;
 use std::fs;
-use std::io::{self, Write};
+use std::io::{self, Read, Write};
 use std::path::PathBuf;
 use tiny_http::{Response, Server, StatusCode};
 
@@ -339,10 +339,25 @@ struct QueryRequest {
     sql: String,
 }
 
+fn constant_time_equal(left: &[u8], right: &[u8]) -> bool {
+    if left.len() != right.len() { return false; }
+    let mut difference = 0u8;
+    for (a, b) in left.iter().zip(right.iter()) { difference |= a ^ b; }
+    difference == 0
+}
+
 fn run_server() -> Result<()> {
     let address = env::var("ATDEV_DB_BIND").unwrap_or_else(|_| "127.0.0.1:8788".into());
     let root = PathBuf::from(env::var("ATDEV_DB_PATH").unwrap_or_else(|_| "./atdev-data".into()));
     fs::create_dir_all(&root)?;
+    let token = env::var("ATDEV_DB_TOKEN").ok().filter(|value| !value.trim().is_empty());
+    let loopback = address.starts_with("127.0.0.1:")
+        || address.starts_with("localhost:")
+        || address.starts_with("[::1]:")
+        || address.starts_with("::1:");
+    if !loopback && token.is_none() {
+        bail!("ATDEV_DB_TOKEN is required when binding outside loopback interfaces");
+    }
     let server = Server::http(&address).map_err(|e| anyhow!("could not bind AtDev DB server: {e}"))?;
     println!("AtDev DB API listening on http://{address}");
     for mut request in server.incoming_requests() {
@@ -360,12 +375,28 @@ fn run_server() -> Result<()> {
             let _ = request.respond(response);
             continue;
         }
+        if let Some(expected_token) = token.as_deref() {
+            let expected = format!("Bearer {expected_token}");
+            let supplied = request.headers().iter()
+                .find(|header| header.field.equiv("Authorization"))
+                .map(|header| header.value.as_str())
+                .unwrap_or("");
+            if !constant_time_equal(supplied.as_bytes(), expected.as_bytes()) {
+                let response = Response::from_string(r#"{\"ok\":false,\"error\":\"unauthorized\"}"#)
+                    .with_status_code(StatusCode(401))
+                    .with_header(tiny_http::Header::from_bytes("Content-Type", "application/json").map_err(|_| anyhow!("invalid response header"))?);
+                let _ = request.respond(response);
+                continue;
+            }
+        }
         let mut body = String::new();
-        let result = request.as_reader().read_to_string(&mut body)
+        let result = request.as_reader().take(1_048_577).read_to_string(&mut body)
+            .and_then(|_| if body.len() > 1_048_576 { Err(io::Error::new(io::ErrorKind::InvalidData, "request body exceeds 1 MiB")) } else { Ok(body.len()) })
             .context("could not read request body")
             .and_then(|_| serde_json::from_str::<QueryRequest>(&body).context("invalid JSON request"));
         let response_body = match result {
-            Ok(input) if !input.database.is_empty() && input.database.len() <= 80
+            Ok(input) if !input.sql.trim().is_empty() && input.sql.len() <= 10_000
+                && !input.database.is_empty() && input.database.len() <= 80
                 && input.database.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-') =>
             {
                 match Database::at(root.join(&input.database)).and_then(|db| db.execute(&input.sql)) {
