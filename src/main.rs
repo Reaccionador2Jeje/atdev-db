@@ -187,9 +187,9 @@ fn tokenize(sql: &str) -> Result<Vec<String>> {
     let mut chars = sql.chars().peekable();
     let mut quote = false;
     while let Some(ch) = chars.next() {
-        if ch == '\\'' {
+        if ch == '\'' {
             current.push(ch);
-            if quote && chars.peek() == Some(&'\\'') {
+            if quote && chars.peek() == Some(&'\'') {
                 current.push(chars.next().unwrap());
             } else {
                 quote = !quote;
