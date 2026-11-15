@@ -81,3 +81,7 @@ The JSON storage format is alpha and may change before 1.0. Back up data before 
 ## License
 
 MIT
+
+## Walletie compatibility
+
+Walletie owns its wallet balances and transaction ledger. AtDev DB must not write directly to those tables. See [the Walletie integration boundary](docs/WALLETIE_INTEGRATION.md).
