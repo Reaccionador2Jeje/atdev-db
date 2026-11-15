@@ -351,6 +351,9 @@ fn run_server() -> Result<()> {
     let root = PathBuf::from(env::var("ATDEV_DB_PATH").unwrap_or_else(|_| "./atdev-data".into()));
     fs::create_dir_all(&root)?;
     let token = env::var("ATDEV_DB_TOKEN").ok().filter(|value| !value.trim().is_empty());
+    if token.as_ref().is_some_and(|value| value.len() < 32) {
+        bail!("ATDEV_DB_TOKEN must contain at least 32 characters");
+    }
     let loopback = address.starts_with("127.0.0.1:")
         || address.starts_with("localhost:")
         || address.starts_with("[::1]:")
