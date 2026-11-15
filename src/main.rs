@@ -1,11 +1,10 @@
 use anyhow::{anyhow, bail, Context, Result};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::collections::HashMap;
 use std::env;
 use std::fs;
 use std::io::{self, Write};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct Table {
@@ -188,16 +187,22 @@ fn tokenize(sql: &str) -> Result<Vec<String>> {
     let mut chars = sql.chars().peekable();
     let mut quote = false;
     while let Some(ch) = chars.next() {
-        if ch == '\'' {
+        if ch == '\\'' {
             current.push(ch);
-            if quote && chars.peek() == Some(&'\'') {
+            if quote && chars.peek() == Some(&'\\'') {
                 current.push(chars.next().unwrap());
             } else {
                 quote = !quote;
             }
-        } else if !quote && (ch.is_whitespace() || ch == ',' || ch == '(' || ch == ')' || ch == ';' || ch == '=') {
+        } else if !quote && (ch.is_whitespace() || ch == ',' || ch == '(' || ch == ')' || ch == ';' || ch == '=' || ch == '>' || ch == '<') {
             if !current.is_empty() { out.push(std::mem::take(&mut current)); }
-            if ch == ',' || ch == '(' || ch == ')' || ch == '=' { out.push(ch.to_string()); }
+            if ch == '>' || ch == '<' {
+                let mut operator = ch.to_string();
+                if chars.peek() == Some(&'=') { operator.push(chars.next().unwrap()); }
+                out.push(operator);
+            } else if ch == ',' || ch == '(' || ch == ')' || ch == '=' {
+                out.push(ch.to_string());
+            }
         } else {
             current.push(ch);
         }
