@@ -5,6 +5,7 @@ use std::env;
 use std::fs;
 use std::io::{self, Write};
 use std::path::PathBuf;
+use tiny_http::{Response, Server, StatusCode};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct Table {
@@ -21,8 +22,12 @@ struct Database {
 impl Database {
     fn new() -> Result<Self> {
         let directory = env::var("ATDEV_DB_PATH").unwrap_or_else(|_| "./atdev-data".into());
+        Self::at(PathBuf::from(directory))
+    }
+
+    fn at(directory: PathBuf) -> Result<Self> {
         fs::create_dir_all(&directory).context("could not create database directory")?;
-        Ok(Self { directory: PathBuf::from(directory) })
+        Ok(Self { directory })
     }
 
     fn table_path(&self, name: &str) -> Result<PathBuf> {
@@ -299,7 +304,58 @@ fn display(value: &Value) -> String {
     match value { Value::String(s) => s.clone(), _ => value.to_string() }
 }
 
+#[derive(Deserialize)]
+struct QueryRequest {
+    database: String,
+    sql: String,
+}
+
+fn run_server() -> Result<()> {
+    let address = env::var("ATDEV_DB_BIND").unwrap_or_else(|_| "127.0.0.1:8788".into());
+    let root = PathBuf::from(env::var("ATDEV_DB_PATH").unwrap_or_else(|_| "./atdev-data".into()));
+    fs::create_dir_all(&root)?;
+    let server = Server::http(&address).map_err(|e| anyhow!("could not bind AtDev DB server: {e}"))?;
+    println!("AtDev DB API listening on http://{address}");
+    for mut request in server.incoming_requests() {
+        let url = request.url().to_string();
+        if request.method().as_str() == "GET" && url == "/health" {
+            let response = Response::from_string(r#"{"status":"ok","service":"atdev-db"}"#)
+                .with_header("Content-Type: application/json".parse::<tiny_http::Header>()?);
+            let _ = request.respond(response);
+            continue;
+        }
+        if request.method().as_str() != "POST" || url != "/v1/query" {
+            let response = Response::from_string(r#"{"error":"not found"}"#)
+                .with_status_code(StatusCode(404))
+                .with_header("Content-Type: application/json".parse::<tiny_http::Header>()?);
+            let _ = request.respond(response);
+            continue;
+        }
+        let mut body = String::new();
+        let result = request.as_reader().read_to_string(&mut body)
+            .context("could not read request body")
+            .and_then(|_| serde_json::from_str::<QueryRequest>(&body).context("invalid JSON request"));
+        let response_body = match result {
+            Ok(input) if !input.database.is_empty() && input.database.len() <= 80
+                && input.database.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-') =>
+            {
+                match Database::at(root.join(&input.database)).and_then(|db| db.execute(&input.sql)) {
+                    Ok(output) => serde_json::json!({"ok": true, "result": output}).to_string(),
+                    Err(error) => serde_json::json!({"ok": false, "error": format!("{error:#}")}).to_string(),
+                }
+            }
+            Ok(_) => serde_json::json!({"ok": false, "error": "invalid database name"}).to_string(),
+            Err(error) => serde_json::json!({"ok": false, "error": format!("{error:#}")}).to_string(),
+        };
+        let response = Response::from_string(response_body)
+            .with_header("Content-Type: application/json".parse::<tiny_http::Header>()?);
+        let _ = request.respond(response);
+    }
+    Ok(())
+}
+
 fn main() -> Result<()> {
+    if env::args().any(|arg| arg == "--server") { return run_server(); }
     let db = Database::new()?;
     println!("AtDev DB 0.1.0-alpha — experimental SQL database");
     println!("Data directory: {} | type .exit to quit", db.directory.display());
