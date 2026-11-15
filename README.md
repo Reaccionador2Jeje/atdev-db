@@ -15,10 +15,17 @@ AtDev DB starts with a deliberately small SQL dialect and a durable JSON-backed 
 ## Requirements
 - Rust stable (1.75+ recommended)
 
-## Run
+## Run the SQL shell
 ```sh
 cargo run
 ```
+
+## Run as AtDev Cloud database service
+```sh
+ATDEV_DB_BIND=127.0.0.1:8788 cargo run -- --server
+```
+
+The HTTP mode exposes `GET /health` and authenticated-proxy target `POST /v1/query` (JSON: `{ "database": "user_project", "sql": "SELECT * FROM notes" }`). Keep this service on a private network; AtDev Cloud is responsible for user authentication and database isolation. Each database name is restricted to safe filename characters.
 
 Use a custom data directory:
 ```sh
