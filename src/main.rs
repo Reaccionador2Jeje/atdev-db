@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::env;
 use std::fs;
-use std::io::{self, Read, Write};
+use std::io::{self, Write};
 use std::path::PathBuf;
 use tiny_http::{Response, Server, StatusCode};
 
@@ -356,7 +356,7 @@ fn run_server() -> Result<()> {
         if request.method().as_str() != "POST" || url != "/v1/query" {
             let response = Response::from_string(r#"{"error":"not found"}"#)
                 .with_status_code(StatusCode(404))
-                .with_header("Content-Type: application/json".parse::<tiny_http::Header>()?);
+                .with_header(tiny_http::Header::from_bytes("Content-Type", "application/json").map_err(|_| anyhow!("invalid response header"))?);
             let _ = request.respond(response);
             continue;
         }
